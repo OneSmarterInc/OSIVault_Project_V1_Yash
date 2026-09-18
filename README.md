@@ -114,7 +114,7 @@ pytest
 ## Authors and Maintainers
 
 - Yash Tayade (tayadeyash2005@gmail.com)
-- One Smarter Inc., USA (engineering@onesmarter.com)
+- One Smarter Inc., USA
 
 ## License
 
