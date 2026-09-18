@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osivault"
+version = "0.1.0"
+description = "One Smarter's shared security core: field-level encryption, tamper-evident audit logs, digital signatures, JWKS tokens, MFA adapters, and compliance watch."
+readme = "README.md"
+authors = [
+    { name = "Yash Tayade", email = "tayadeyash2005@gmail.com" },
+    { name = "One Smarter Inc., USA", email = "tayadeyash2005@gmail.com" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=4.2",
+    "cryptography>=41.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-django>=4.5.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+DJANGO_SETTINGS_MODULE = "tests.settings"
