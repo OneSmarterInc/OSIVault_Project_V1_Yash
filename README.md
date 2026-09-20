@@ -1,4 +1,4 @@
-# 🛡️ OSIVault: Enterprise Security Core
+# OSIVault: Enterprise Security Core
 
 **OSIVault** is One Smarter's shared security core: a single versioned Python package that every enterprise application imports for field-level encryption at rest, tamper-evident audit trail integrity, cryptographic signing and verification, token issuance, and strong multi-factor authentication adapters.
 
@@ -8,7 +8,7 @@ For full architectural details, governance rules, and monthly audit rituals, con
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```bash
 pip install osivault
@@ -16,7 +16,7 @@ pip install osivault
 
 ---
 
-## 🧪 Running the tests
+## Running the tests
 
 To run the complete test suite on PostgreSQL (including concurrency advisory lock and database trigger immutability tests):
 
@@ -29,7 +29,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/osivault_test python 
 
 ---
 
-## 🏛️ Module Overview
+## Module Overview
 
 | Module | Purpose | Underlying Cryptographic Primitive |
 | :--- | :--- | :--- |
@@ -42,7 +42,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/osivault_test python 
 
 ---
 
-## 🚀 Quickstart & Code Examples
+## Quickstart & Code Examples
 
 ### 1. Field-Level Encryption & Blind Index Search Hashing (`osivault.fields`)
 
@@ -109,7 +109,7 @@ print("Checkpoint Verification:", cp_report.is_valid)
 
 ---
 
-## 🔒 Security Immutability & Threat Model
+## Security Immutability & Threat Model
 
 - **Data Theft Resistance**: All sensitive model fields are stored as AES-256-GCM scrambled ciphertext (`OSV1$AES-256-GCM$...`).
 - **Audit Log Tamper Defense**: Any direct database alteration or row deletion breaks the HMAC SHA-256 Merkle chain. `verify_chain()` flags `is_intact: False` with the exact tampered row primary key.
@@ -117,6 +117,6 @@ print("Checkpoint Verification:", cp_report.is_valid)
 
 ---
 
-## 📖 License
+## License
 
 Copyright 2026 One Smarter, Inc. All rights reserved. Proprietary and confidential.
