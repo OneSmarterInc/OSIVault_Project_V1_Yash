@@ -1,121 +1,122 @@
-# OSIVault Core Security Framework
+# 🛡️ OSIVault: Enterprise Security Core
 
-OSIVault is One Smarter Inc.'s shared security core: a single, versioned Python package that every One Smarter application imports for encryption at rest, audit trail integrity, cryptographic signing and verification, token issuance, and strong authentication. It unifies the cryptographic primitives extracted from Concorde, MeshKor, and the MIR portal into a single maintained core.
+**OSIVault** is One Smarter's shared security core: a single versioned Python package that every enterprise application imports for field-level encryption at rest, tamper-evident audit trail integrity, cryptographic signing and verification, token issuance, and strong multi-factor authentication adapters.
 
-## Architecture and Design Goal
+Extracted from proven primitives in Concorde and MeshKor alongside healthcare EDI security requirements, OSIVault provides a unified, **crypto-agile interface** designed to ensure that cryptographic algorithm upgrades occur centrally without requiring application code changes.
 
-The primary design goal of OSIVault is long-term cryptographic agility:
+For full architectural details, governance rules, and monthly audit rituals, consult the [OSIVault Core Charter](docs/charter.md).
 
-When a monthly audit dictates a change in an algorithm, key size, library, or mode, that change is executed once inside OSIVault. OSIVault ships a new version, consuming applications bump their pin and run the conformance suite, and no application code changes. If an upgrade ever requires editing application code, the interface was wrong and the fix is to the interface, not to the application.
+---
 
-## Public Interface Surface
-
-Applications import strictly from these six public namespaces:
-
-| Namespace | Public Operations | Purpose |
-| --- | --- | --- |
-| osivault.audit | append, verify_entry, verify_chain, rotate_key, checkpoint | Keyed, chained, tamper-evident audit records |
-| osivault.fields | encrypt, decrypt, EncryptedTextField, EncryptedJSONField, rotate_dek, SearchHash | Field-level encryption at rest and blind-index search hashing |
-| osivault.sign | sign, verify, Envelope | Self-describing signatures over arbitrary bytes |
-| osivault.tokens | issue, verify, jwks_document, rotate | Session and service tokens with published verification keys |
-| osivault.auth | TOTPVerifier, WebAuthnRegistrar, WebAuthnAsserter, RecoveryCodes | Second-factor adapters for privileged and ordinary accounts |
-| osivault.watch | inventory, baseline, report | Machine-readable statement of algorithms and libraries in use |
-
-## Module Specification: osivault.audit
-
-Round 1 delivers `osivault.audit`, merging the keyed HMAC checksums from Concorde with the `previous_hash` chain and PostgreSQL triggers from the MIR portal.
-
-### Technical Implementation Details
-1. **Self-Describing Envelope (Format v1)**: Authenticated header specifying `mac_alg: HMAC-SHA-256`, `fmt_ver: 1`, `hash_alg: SHA-256`, and `key_id`.
-2. **Canonical JSON Serialization**: Key-sorted payload binding `envelope`, `previous_hash`, `timestamp` (ISO 8601 UTC with microseconds), `actor`, `tenant`, `resource_type`, `resource_id`, `action`, `old_values`, and `new_values` inside the MAC computation.
-3. **Key Providers and Fail-Closed Semantics**: `EnvVarKeyProvider` and `InMemoryKeyProvider` supporting active current and previous key rotation. Production environments fail closed if no key is configured (`DEBUG=False`).
-4. **Atomic Linear Append**: Uses `select_for_update().order_by("-pk").first()` inside database transactions to ensure chain linearity under concurrent writers.
-5. **PostgreSQL Engine Immutability**: Native PL/pgSQL `BEFORE UPDATE OR DELETE` function trigger (`install_postgres_immutability_trigger`) blocking direct SQL modifications in tools like pgAdmin, DBeaver, or psql.
-6. **Whole-Table Replacement Protection**: `checkpoint()` operation computes the entry hash and row count of the last row, producing authenticated records in `OSIVaultAuditCheckpoint` to detect whole-table replacements.
-
-## Integration Guide
-
-### 1. Installation
+## 📦 Installation
 
 ```bash
 pip install osivault
 ```
 
-### 2. Subclassing AuditLog Model
+---
+
+## 🧪 Running the tests
+
+To run the complete test suite on PostgreSQL (including concurrency advisory lock and database trigger immutability tests):
+
+```bash
+docker run --name osivault-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=osivault_test -p 5432:5432 -d postgres:16
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/osivault_test python -m pytest -q
+```
+
+*Note: Running `python -m pytest` without `DATABASE_URL` uses an in-memory SQLite database, which runs all core cryptographic unit tests but skips PostgreSQL-specific concurrency and trigger immutability tests.*
+
+---
+
+## 🏛️ Module Overview
+
+| Module | Purpose | Underlying Cryptographic Primitive |
+| :--- | :--- | :--- |
+| **`osivault.fields`** | Field-level encryption at rest & search hashing | AES-256-GCM Envelope Encryption & HMAC-SHA-256 |
+| **`osivault.audit`** | Keyed, chained, tamper-evident audit records | SHA-256 Merkle Hash Linkage & Signed Checkpoints |
+| **`osivault.sign`** | Self-describing signatures over arbitrary bytes | RSA / HMAC / Post-Quantum Ready Envelopes |
+| **`osivault.tokens`** | Session and service tokens with published JWKS | RS256 / JWT Tokens & RFC 7517 JWKS Metadata |
+| **`osivault.auth`** | Multi-factor authentication adapters | TOTP (Replay Guarded) & WebAuthn / FIDO2 |
+| **`osivault.watch`** | Compliance inventory & posture reporting | Machine-Readable Algorithm & CVE Inventory |
+
+---
+
+## 🚀 Quickstart & Code Examples
+
+### 1. Field-Level Encryption & Blind Index Search Hashing (`osivault.fields`)
+
+```python
+from osivault.fields import encrypt, decrypt, SearchHash, EncryptedTextField, EncryptedJSONField
+from django.db import models
+
+# 1. Standalone AES-256-GCM Envelope Encryption (fresh 256-bit DEK per encrypt)
+ciphertext = encrypt("Sensitive Data: 123-45-6789", context="tenant_101")
+plaintext = decrypt(ciphertext, context="tenant_101")
+
+# 2. Deterministic Blind Index Search Hashing for SQL queries
+ssn_hash = SearchHash("123-45-6789")
+
+# 3. Transparent Django Model Fields
+class StudentRecord(models.Model):
+    name = models.CharField(max_length=255)
+    ssn_id = EncryptedTextField(blank=True, null=True)
+    ssn_search_hash = models.CharField(max_length=64, db_index=True, blank=True, null=True)
+    medical_notes = EncryptedTextField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if self.ssn_id:
+            self.ssn_search_hash = SearchHash(self.ssn_id)
+        super().save(*args, **kwargs)
+```
+
+---
+
+### 2. Tamper-Evident Audit Trail (`osivault.audit`)
 
 ```python
 from django.db import models
 from osivault.audit.models import OSIVaultAuditLog
+from osivault.audit import append, verify_chain, rotate_key, checkpoint, verify_checkpoint
 
-class ApplicationAuditLog(OSIVaultAuditLog):
-    """
-    Subclass OSIVaultAuditLog to add tenant foreign keys or application-specific columns.
-    """
-    client_name = models.CharField(max_length=255, blank=True)
+# 1. Define Subclassed Audit Log Model
+class SystemAuditLog(OSIVaultAuditLog):
+    details = models.TextField(blank=True, default="")
 
-    class Meta:
-        db_table = "audit_log"
-```
-
-### 3. Appending Audit Entries
-
-```python
-from osivault.audit import append
-from myapp.models import ApplicationAuditLog
-
-audit_entry = append(
-    model_class=ApplicationAuditLog,
-    actor="admin@onesmarter.com",
+# 2. Append Tamper-Evident Audit Record
+log = append(
+    model_class=SystemAuditLog,
+    actor="admin_user",
     tenant="tenant_alpha",
-    resource_type="PATIENT_RECORD",
-    resource_id="REC_99201",
+    resource_type="STUDENT",
+    resource_id="101",
     action="UPDATE",
-    old_values={"status": "PENDING"},
-    new_values={"status": "APPROVED"},
+    details="Updated student record"
 )
+
+# 3. Verify Entire Audit Chain Integrity
+report = verify_chain(SystemAuditLog)
+print("Is Audit Chain Intact?:", report.is_intact)
+
+# 4. Rotate Encryption Master Key (k1 -> k2)
+rotate_key(new_current_key="new-master-key-k2!", new_key_id="k2")
+
+# 5. Take Periodic Table Snapshot Checkpoint
+cp = checkpoint(SystemAuditLog)
+cp_report = verify_checkpoint(cp, SystemAuditLog)
+print("Checkpoint Verification:", cp_report.is_valid)
 ```
 
-### 4. Installing PostgreSQL Immutability Trigger
+---
 
-```python
-from django.apps import AppConfig
+## 🔒 Security Immutability & Threat Model
 
-class AuditConfig(AppConfig):
-    name = "myapp"
+- **Data Theft Resistance**: All sensitive model fields are stored as AES-256-GCM scrambled ciphertext (`OSV1$AES-256-GCM$...`).
+- **Audit Log Tamper Defense**: Any direct database alteration or row deletion breaks the HMAC SHA-256 Merkle chain. `verify_chain()` flags `is_intact: False` with the exact tampered row primary key.
+- **ORM Immutability Guard**: Any attempt to modify or delete historical audit entries in Python code raises `osivault.audit.crypto.ImmutabilityError`.
 
-    def ready(self):
-        from osivault.audit.postgres import install_postgres_immutability_trigger
-        
-        install_postgres_immutability_trigger('audit_log')
-```
+---
 
-### 5. Verifying Audit Chain Integrity
+## 📖 License
 
-```python
-from osivault.audit import verify_chain
-from myapp.models import ApplicationAuditLog
-
-report = verify_chain(ApplicationAuditLog)
-
-if report.is_intact:
-    print(f"Chain intact. Total verified entries: {report.total_count}")
-else:
-    print(f"Audit failure detected at primary key {report.failed_pk}: {report.failure_reason}")
-```
-
-## Running Conformance Tests
-
-Run the test suite using pytest:
-
-```bash
-pytest
-```
-
-## Authors and Maintainers
-
-- Yash Tayade (tayadeyash2005@gmail.com)
-- One Smarter Inc., USA
-
-## License
-
-This project is licensed under the MIT License.
+Copyright 2026 One Smarter, Inc. All rights reserved. Proprietary and confidential.

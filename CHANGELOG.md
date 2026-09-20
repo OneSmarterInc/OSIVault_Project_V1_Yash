@@ -1,20 +1,19 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to OSIVault will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-12
 
 ### Added
-- Repository bootstrap and package structure (`osivault.fields`, `osivault.audit`, `osivault.sign`, `osivault.tokens`, `osivault.auth`, `osivault.watch`).
-- `osivault.audit` merged audit module implementation:
-  - Abstract model `OSIVaultAuditLog` with immutable `.save()` and `.delete()` guards.
-  - Keyed HMAC-SHA-256 MAC authentication over canonical JSON payload.
-  - Merkle SHA-256 `previous_hash` chain linkage.
-  - Key providers (`EnvVarKeyProvider` and `InMemoryKeyProvider`) with debug fallback warnings and production fail-closed semantics.
-  - Operations: `append`, `verify_entry`, `verify_chain`, `rotate_key`, `checkpoint`.
-  - Native PostgreSQL `BEFORE UPDATE OR DELETE` function trigger (`install_postgres_immutability_trigger`).
-  - Periodic `checkpoint` table (`OSIVaultAuditCheckpoint`) to catch whole-table replacement.
-- Seed conformance test suite (`tests/test_audit.py`) with 13 comprehensive tests.
+- **`osivault.fields`**: Field-level authenticated encryption at rest using AES-256-GCM with fresh 256-bit DEK per encrypt, pluggable KMS provider (`LocalKeyringProvider` and `AWSKMSProvider`), context binding (AAD), `rotate_dek`, HMAC-SHA-256 `SearchHash` blind indexing, and Django `EncryptedTextField` and `EncryptedJSONField` model fields.
+- **`osivault.sign`**: Self-describing digital signature envelopes (`sig_alg`, `fmt_ver`, `hash_alg`, `key_id`) with allowlist-first verification for `Ed25519`, `RS256`, and Post-Quantum `ML-DSA-65` schemes.
+- **`osivault.tokens`**: JWT token issuance and verification wrapped behind `osivault.sign`, claim validation (`exp`, `iat`, `iss`, `nbf`), RFC 7517 compliant `jwks_document` generator, and token key rotation.
+
+## [0.1.0] - 2026-09-11
+
+### Added
+- Initial repository bootstrap and package structure.
+- Implementation of `osivault.audit` merged audit module featuring HMAC-SHA-256 signatures, previous-hash chaining, self-describing envelopes, key rotation, and immutability guards.
