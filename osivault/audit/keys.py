@@ -25,6 +25,10 @@ class KeyProvider:
         """Returns tuple of (key_bytes, key_id) or (None, None)."""
         raise NotImplementedError
 
+    def rotate(self, new_current_key, new_key_id):
+        """Rotate keys in provider."""
+        raise NotImplementedError
+
 
 class EnvVarKeyProvider(KeyProvider):
     """
@@ -67,6 +71,13 @@ class EnvVarKeyProvider(KeyProvider):
             return val.encode("utf-8"), key_id
         return None, None
 
+    def rotate(self, new_current_key, new_key_id):
+        raise ConfigurationError(
+            "Environment-backed keys are rotated operationally: set OSIVAULT_AUDIT_PREVIOUS_KEY "
+            "to the old current key, set OSIVAULT_AUDIT_CURRENT_KEY to the new key, restart, "
+            "and take a checkpoint under the new key before the previous key is ever removed."
+        )
+
 
 class InMemoryKeyProvider(KeyProvider):
     """
@@ -101,6 +112,6 @@ def get_default_key_provider() -> KeyProvider:
     return _default_provider
 
 
-def set_default_key_provider(provider: KeyProvider) -> None:
+def _set_default_key_provider_for_tests(provider: KeyProvider) -> None:
     global _default_provider
     _default_provider = provider

@@ -3,7 +3,16 @@ osivault.audit: Keyed, chained, tamper-evident audit records.
 """
 
 def __getattr__(name):
-    if name in {"append", "verify_entry", "verify_chain", "rotate_key", "checkpoint", "AuditVerificationReport"}:
+    if name in {
+        "append",
+        "verify_entry",
+        "verify_chain",
+        "rotate_key",
+        "checkpoint",
+        "verify_checkpoint",
+        "AuditVerificationReport",
+        "CheckpointVerificationReport",
+    }:
         from osivault.audit import operations
         return getattr(operations, name)
     if name in {"AuditError", "ImmutabilityError", "ConfigurationError", "AllowlistError"}:
@@ -18,7 +27,9 @@ __all__ = [
     "verify_chain",
     "rotate_key",
     "checkpoint",
+    "verify_checkpoint",
     "AuditVerificationReport",
+    "CheckpointVerificationReport",
     "AuditError",
     "ImmutabilityError",
     "ConfigurationError",
