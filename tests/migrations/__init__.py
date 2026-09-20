@@ -1,0 +1,1 @@
+# tests app migrations package
