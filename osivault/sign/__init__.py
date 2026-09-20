@@ -1,13 +1,19 @@
 """
-osivault.sign: Self-describing signatures over arbitrary bytes.
+osivault.sign: Self-describing digital signature envelopes with allowlist-first verification.
 """
 
-def sign(*args, **kwargs):
-    raise NotImplementedError("osivault.sign.sign is not implemented in round 1.")
+from osivault.sign.crypto import (
+    sign,
+    verify,
+    Envelope,
+    SignatureVerificationError,
+    ALLOWED_SIGNATURE_ALGORITHMS,
+)
 
-def verify(*args, **kwargs):
-    raise NotImplementedError("osivault.sign.verify is not implemented in round 1.")
-
-class Envelope:
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError("osivault.sign.Envelope is not implemented in round 1.")
+__all__ = [
+    "sign",
+    "verify",
+    "Envelope",
+    "SignatureVerificationError",
+    "ALLOWED_SIGNATURE_ALGORITHMS",
+]
