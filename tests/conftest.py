@@ -27,8 +27,12 @@ def setup_audit_keys(monkeypatch):
 def flush_test_db(db):
     yield
     with connection.cursor() as cursor:
+        if is_postgres():
+            cursor.execute("DROP TRIGGER IF EXISTS trg_osivault_immutable_test_concrete_audit_log ON test_concrete_audit_log;")
+            cursor.execute("DROP TRIGGER IF EXISTS trg_osivault_immutable_osivault_audit_checkpoint ON osivault_audit_checkpoint;")
         cursor.execute("DELETE FROM osivault_audit_checkpoint;")
         cursor.execute("DELETE FROM test_concrete_audit_log;")
+
 
 
 def is_postgres():

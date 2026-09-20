@@ -21,7 +21,11 @@ from osivault.audit import (
 from osivault.audit.models import OSIVaultAuditCheckpoint
 from osivault.audit.crypto import ImmutabilityError, ConfigurationError, AllowlistError
 from osivault.audit.keys import InMemoryKeyProvider
-from osivault.audit.postgres import install_postgres_immutability_triggers
+from osivault.audit.postgres import (
+    install_postgres_immutability_triggers,
+    remove_postgres_immutability_triggers,
+)
+
 from tests.conftest import postgres_only
 
 
@@ -572,13 +576,17 @@ def test_postgres_trigger_blocks_raw_sql():
     append(ConcreteAuditLog, actor="a", tenant="t", resource_type="r", resource_id="1", action="A")
     checkpoint(ConcreteAuditLog)
     install_postgres_immutability_triggers("test_concrete_audit_log", "osivault_audit_checkpoint")
-    for stmt in (
-        "UPDATE test_concrete_audit_log SET actor='evil'",
-        "DELETE FROM test_concrete_audit_log",
-        "UPDATE osivault_audit_checkpoint SET row_count=999",
-        "DELETE FROM osivault_audit_checkpoint",
-    ):
-        with pytest.raises(Exception, match="immutable"):
-            with transaction.atomic():
-                with connection.cursor() as c:
-                    c.execute(stmt)
+    try:
+        for stmt in (
+            "UPDATE test_concrete_audit_log SET actor='evil'",
+            "DELETE FROM test_concrete_audit_log",
+            "UPDATE osivault_audit_checkpoint SET row_count=999",
+            "DELETE FROM osivault_audit_checkpoint",
+        ):
+            with pytest.raises(Exception, match="immutable"):
+                with transaction.atomic():
+                    with connection.cursor() as c:
+                        c.execute(stmt)
+    finally:
+        remove_postgres_immutability_triggers("test_concrete_audit_log", "osivault_audit_checkpoint")
+
