@@ -30,3 +30,11 @@ def install_postgres_immutability_trigger(table_name: str) -> None:
 
     with connection.cursor() as cursor:
         cursor.execute(sql)
+
+
+def install_postgres_immutability_triggers(*table_names: str) -> None:
+    """
+    Convenience helper that installs immutability triggers on multiple tables in one call.
+    """
+    for table_name in table_names:
+        install_postgres_immutability_trigger(table_name)

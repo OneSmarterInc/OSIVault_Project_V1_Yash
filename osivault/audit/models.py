@@ -7,7 +7,7 @@ from osivault.audit.crypto import ImmutabilityError
 
 
 class OSIVaultAuditQuerySet(models.QuerySet):
-    """QuerySet subclass that prohibits bulk update and delete operations."""
+    """QuerySet subclass that prohibits bulk update, delete, and bulk_create operations."""
 
     def update(self, *args, **kwargs):
         raise ImmutabilityError("OSIVault audit log queryset update is strictly prohibited.")
@@ -15,12 +15,18 @@ class OSIVaultAuditQuerySet(models.QuerySet):
     def delete(self, *args, **kwargs):
         raise ImmutabilityError("OSIVault audit log queryset delete is strictly prohibited.")
 
+    def bulk_create(self, *args, **kwargs):
+        raise ImmutabilityError("OSIVault audit entries can only be created through osivault.audit.append().")
+
 
 class OSIVaultAuditManager(models.Manager):
-    """Manager returning OSIVaultAuditQuerySet."""
+    """Manager returning OSIVaultAuditQuerySet and guarding bulk_create."""
 
     def get_queryset(self):
         return OSIVaultAuditQuerySet(self.model, using=self._db)
+
+    def bulk_create(self, *args, **kwargs):
+        raise ImmutabilityError("OSIVault audit entries can only be created through osivault.audit.append().")
 
 
 class OSIVaultAuditLog(models.Model):
@@ -42,17 +48,21 @@ class OSIVaultAuditLog(models.Model):
     envelope = models.JSONField()
 
     objects = OSIVaultAuditManager()
+    _osivault_append_token = False   # set only by osivault.audit.append
 
     class Meta:
         abstract = True
 
     def save(self, *args, **kwargs):
         """
-        Immutability guard: Refuses updates to an existing primary key.
-        Only allows insertion when pk is None or force_insert is True.
+        Immutability guard: Refuses updates to an existing primary key and direct creation.
         """
-        if self.pk is not None and not kwargs.get("force_insert", False):
+        if self.pk is not None:
             raise ImmutabilityError("OSIVault audit entries are immutable and cannot be updated.")
+        if not getattr(self, "_osivault_append_token", False):
+            raise ImmutabilityError(
+                "OSIVault audit entries can only be created through osivault.audit.append()."
+            )
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -67,14 +77,34 @@ class OSIVaultAuditCheckpoint(models.Model):
     Table storing signed periodic checkpoints to catch whole-table replacement attacks.
     """
 
+    table_name = models.CharField(max_length=255, db_index=True)
     last_entry_hash = models.CharField(max_length=128)
-    row_count = models.IntegerField()
+    row_count = models.BigIntegerField()
+    previous_checkpoint_hash = models.CharField(max_length=128, blank=True)
     envelope = models.JSONField()
     timestamp = models.DateTimeField(db_index=True)
     checkpoint_hash = models.CharField(max_length=128)
 
+    objects = OSIVaultAuditManager()
+    _osivault_append_token = False
+
     class Meta:
         db_table = "osivault_audit_checkpoint"
 
+    def save(self, *args, **kwargs):
+        """
+        Immutability guard: Refuses updates and direct creation outside checkpoint().
+        """
+        if self.pk is not None:
+            raise ImmutabilityError("OSIVault audit checkpoints are immutable and cannot be updated.")
+        if not getattr(self, "_osivault_append_token", False):
+            raise ImmutabilityError(
+                "OSIVault audit checkpoints can only be created through osivault.audit.checkpoint()."
+            )
+        super().save(*args, **kwargs)
 
-
+    def delete(self, *args, **kwargs):
+        """
+        Immutability guard: Always refuses deletion.
+        """
+        raise ImmutabilityError("OSIVault checkpoints are immutable and cannot be deleted.")
