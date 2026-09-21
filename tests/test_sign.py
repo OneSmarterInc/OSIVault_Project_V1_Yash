@@ -1,8 +1,9 @@
 """
 Tests for osivault.sign module.
 Covers self-describing digital signature envelopes, allowlist-first verification,
-Ed25519, RS256, and ML-DSA-65 signature schemes, and payload tampering protection.
+Ed25519 and RS256 signature schemes, and payload tampering protection.
 """
+
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa, ed25519
@@ -80,9 +81,13 @@ def test_signature_tampering_detection(ed25519_keys):
         verify(corrupted_str, key_resolver=lambda kid: pub_key)
 
 
-def test_pqc_ml_dsa_readiness():
-    """Test ML-DSA-65 post-quantum signature envelope algorithm tag acceptance."""
-    payload = b"Post-Quantum Ready Payload"
-    # Testing algorithm identification for ML-DSA-65
-    from osivault.sign import ALLOWED_SIGNATURE_ALGORITHMS
-    assert "ML-DSA-65" in ALLOWED_SIGNATURE_ALGORITHMS
+def test_ml_dsa_not_on_allowlist_until_implemented(rsa_keys):
+    private_key, public_key = rsa_keys
+    with pytest.raises(SignatureVerificationError, match="Allowlist"):
+        sign(b"payload", private_key, alg="ML-DSA-65", key_id="k1")
+
+    # An envelope that merely claims ML-DSA-65 is refused before any key is touched.
+    forged = "OSV1-SIG$ML-DSA-65$k1$SHA-256$cGF5bG9hZA$AAAA"
+    with pytest.raises(SignatureVerificationError, match="Allowlist"):
+        verify(forged, public_key=public_key)
+

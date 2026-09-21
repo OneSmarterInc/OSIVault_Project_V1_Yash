@@ -1,6 +1,11 @@
 """
 Self-describing digital signature envelopes with allowlist-first verification.
-Supports RS256, Ed25519, and Post-Quantum ML-DSA-65 readiness.
+
+The allowlist is exactly the set of algorithms this module can execute. An algorithm
+identifier written into an envelope is a statement of fact about the bytes that follow it;
+nothing may be written into that field that the code did not actually do. Post-quantum
+algorithms are added to the allowlist only with a real implementation, their own key type,
+and their own test vectors, as their own round.
 """
 
 import base64
@@ -9,7 +14,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa, ed25519
 from cryptography.exceptions import InvalidSignature
 
-ALLOWED_SIGNATURE_ALGORITHMS = {"RS256", "Ed25519", "ML-DSA-65"}
+ALLOWED_SIGNATURE_ALGORITHMS = {"RS256", "Ed25519"}
 SIG_HEADER_PREFIX = "OSV1-SIG"
 
 
@@ -68,16 +73,6 @@ def sign(
         if not isinstance(key, ed25519.Ed25519PrivateKey):
             raise TypeError("Ed25519 requires cryptography Ed25519PrivateKey")
         signature = key.sign(payload_bytes)
-    elif alg == "ML-DSA-65":
-        # Post-Quantum Dilithium readiness path
-        if hasattr(key, "sign_pqc"):
-            signature = key.sign_pqc(payload_bytes)
-        elif isinstance(key, ed25519.Ed25519PrivateKey):
-            signature = key.sign(payload_bytes)
-        elif isinstance(key, rsa.RSAPrivateKey):
-            signature = key.sign(payload_bytes, padding.PKCS1v15(), hashes.SHA256())
-        else:
-            raise TypeError(f"ML-DSA-65 key type not recognized: {type(key)}")
 
     b64_payload = base64.urlsafe_b64encode(payload_bytes).decode("ascii").rstrip("=")
     b64_sig = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
@@ -135,13 +130,6 @@ def verify(envelope_str: str, key_resolver=None, public_key=None) -> Envelope:
             if not isinstance(key, ed25519.Ed25519PublicKey):
                 raise TypeError("Ed25519 verification requires Ed25519PublicKey")
             key.verify(signature_bytes, payload_bytes)
-        elif alg == "ML-DSA-65":
-            if hasattr(key, "verify_pqc"):
-                key.verify_pqc(signature_bytes, payload_bytes)
-            elif isinstance(key, ed25519.Ed25519PublicKey):
-                key.verify(signature_bytes, payload_bytes)
-            elif isinstance(key, rsa.RSAPublicKey):
-                key.verify(signature_bytes, payload_bytes, padding.PKCS1v15(), hashes.SHA256())
     except InvalidSignature:
         raise SignatureVerificationError("Signature verification failed: invalid signature or tampered payload.")
     except Exception as e:
