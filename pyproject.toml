@@ -46,11 +46,9 @@ dev = [
     "pytest>=8.0.0",
     "pytest-django>=4.8.0",
     "pytest-cov>=4.1.0",
-    "psycopg[binary]",
-    "psycopg2-binary>=2.9.0",
-    "build>=1.0.0",
-    "twine>=5.0.0"
+    "psycopg[binary]"
 ]
+
 
 [project.urls]
 Homepage = "https://pypi.org/project/osivault/"
