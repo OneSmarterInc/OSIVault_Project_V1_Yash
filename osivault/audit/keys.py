@@ -25,8 +25,8 @@ class KeyProvider:
         """Returns tuple of (key_bytes, key_id) or (None, None)."""
         raise NotImplementedError
 
-    def rotate(self, new_current_key, new_key_id):
-        """Rotate keys in provider."""
+    def rotate(self, new_current_key: bytes | str, new_key_id: str) -> None:
+        """Rotate current key to previous and install new current key."""
         raise NotImplementedError
 
 
@@ -71,7 +71,7 @@ class EnvVarKeyProvider(KeyProvider):
             return val.encode("utf-8"), key_id
         return None, None
 
-    def rotate(self, new_current_key, new_key_id):
+    def rotate(self, new_current_key: bytes | str, new_key_id: str) -> None:
         raise ConfigurationError(
             "Environment-backed keys are rotated operationally: set OSIVAULT_AUDIT_PREVIOUS_KEY "
             "to the old current key, set OSIVAULT_AUDIT_CURRENT_KEY to the new key, restart, "
@@ -84,7 +84,7 @@ class InMemoryKeyProvider(KeyProvider):
     In-memory key provider for testing and explicit runtime key rotation.
     """
 
-    def __init__(self, current_key: bytes, current_key_id: str = "k1", previous_key: Optional[bytes] = None, previous_key_id: Optional[str] = None):
+    def __init__(self, current_key: bytes | str, current_key_id: str = "k1", previous_key: Optional[bytes | str] = None, previous_key_id: Optional[str] = None):
         self.current_key = current_key if isinstance(current_key, bytes) else current_key.encode("utf-8")
         self.current_key_id = current_key_id
         self.previous_key = (previous_key if isinstance(previous_key, bytes) else previous_key.encode("utf-8")) if previous_key else None
@@ -96,7 +96,7 @@ class InMemoryKeyProvider(KeyProvider):
     def get_previous_key(self) -> Tuple[Optional[bytes], Optional[str]]:
         return self.previous_key, self.previous_key_id
 
-    def rotate(self, new_current_key: bytes, new_current_key_id: str = "k2"):
+    def rotate(self, new_current_key: bytes | str, new_current_key_id: str = "k2"):
         """Move current to previous, install new current key."""
         self.previous_key = self.current_key
         self.previous_key_id = self.current_key_id
@@ -115,3 +115,4 @@ def get_default_key_provider() -> KeyProvider:
 def _set_default_key_provider_for_tests(provider: KeyProvider) -> None:
     global _default_provider
     _default_provider = provider
+

@@ -34,32 +34,8 @@ def install_postgres_immutability_trigger(table_name: str) -> None:
 
 def install_postgres_immutability_triggers(*table_names: str) -> None:
     """
-    Convenience helper that installs immutability triggers on multiple tables in one call.
+    Installs PostgreSQL BEFORE UPDATE OR DELETE triggers on multiple tables in sequence.
     """
     for table_name in table_names:
         install_postgres_immutability_trigger(table_name)
-
-
-def remove_postgres_immutability_trigger(table_name: str) -> None:
-    """
-    Removes a PostgreSQL immutability trigger and its function.
-    """
-    trigger_function = f"osivault_prevent_immutability_{table_name}"
-    trigger_name = f"trg_osivault_immutable_{table_name}"
-
-    sql = f"""
-    DROP TRIGGER IF EXISTS {trigger_name} ON {table_name};
-    DROP FUNCTION IF EXISTS {trigger_function}();
-    """
-
-    with connection.cursor() as cursor:
-        cursor.execute(sql)
-
-
-def remove_postgres_immutability_triggers(*table_names: str) -> None:
-    """
-    Convenience helper that removes immutability triggers on multiple tables in one call.
-    """
-    for table_name in table_names:
-        remove_postgres_immutability_trigger(table_name)
 

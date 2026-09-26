@@ -16,17 +16,17 @@ class OSIVaultAuditQuerySet(models.QuerySet):
         raise ImmutabilityError("OSIVault audit log queryset delete is strictly prohibited.")
 
     def bulk_create(self, *args, **kwargs):
-        raise ImmutabilityError("OSIVault audit entries can only be created through osivault.audit.append().")
+        raise ImmutabilityError("OSIVault audit log queryset bulk_create is strictly prohibited.")
 
 
 class OSIVaultAuditManager(models.Manager):
-    """Manager returning OSIVaultAuditQuerySet and guarding bulk_create."""
+    """Manager returning OSIVaultAuditQuerySet."""
 
     def get_queryset(self):
         return OSIVaultAuditQuerySet(self.model, using=self._db)
 
     def bulk_create(self, *args, **kwargs):
-        raise ImmutabilityError("OSIVault audit entries can only be created through osivault.audit.append().")
+        raise ImmutabilityError("OSIVault audit log queryset bulk_create is strictly prohibited.")
 
 
 class OSIVaultAuditLog(models.Model):
@@ -48,14 +48,15 @@ class OSIVaultAuditLog(models.Model):
     envelope = models.JSONField()
 
     objects = OSIVaultAuditManager()
-    _osivault_append_token = False   # set only by osivault.audit.append
+    _osivault_append_token = False
 
     class Meta:
         abstract = True
 
     def save(self, *args, **kwargs):
         """
-        Immutability guard: Refuses updates to an existing primary key and direct creation.
+        Immutability guard: Refuses updates to an existing primary key.
+        Requires _osivault_append_token to be set to True by osivault.audit.append().
         """
         if self.pk is not None:
             raise ImmutabilityError("OSIVault audit entries are immutable and cannot be updated.")
@@ -77,10 +78,10 @@ class OSIVaultAuditCheckpoint(models.Model):
     Table storing signed periodic checkpoints to catch whole-table replacement attacks.
     """
 
-    table_name = models.CharField(max_length=255, db_index=True)
+    table_name = models.CharField(max_length=255, db_index=True, default="")
     last_entry_hash = models.CharField(max_length=128)
-    row_count = models.BigIntegerField()
-    previous_checkpoint_hash = models.CharField(max_length=128, blank=True)
+    row_count = models.BigIntegerField(default=0)
+    previous_checkpoint_hash = models.CharField(max_length=128, blank=True, default="")
     envelope = models.JSONField()
     timestamp = models.DateTimeField(db_index=True)
     checkpoint_hash = models.CharField(max_length=128)
@@ -92,9 +93,6 @@ class OSIVaultAuditCheckpoint(models.Model):
         db_table = "osivault_audit_checkpoint"
 
     def save(self, *args, **kwargs):
-        """
-        Immutability guard: Refuses updates and direct creation outside checkpoint().
-        """
         if self.pk is not None:
             raise ImmutabilityError("OSIVault audit checkpoints are immutable and cannot be updated.")
         if not getattr(self, "_osivault_append_token", False):
@@ -104,7 +102,8 @@ class OSIVaultAuditCheckpoint(models.Model):
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        """
-        Immutability guard: Always refuses deletion.
-        """
-        raise ImmutabilityError("OSIVault checkpoints are immutable and cannot be deleted.")
+        raise ImmutabilityError("OSIVault audit checkpoints are immutable and cannot be deleted.")
+
+
+
+
