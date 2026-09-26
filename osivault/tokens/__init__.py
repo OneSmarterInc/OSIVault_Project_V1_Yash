@@ -1,15 +1,19 @@
 """
-osivault.tokens: Session and service tokens with published verification keys.
+osivault.tokens: Session and service token issuance, verification, and JWKS endpoint generation.
 """
 
-def issue(*args, **kwargs):
-    raise NotImplementedError("osivault.tokens.issue is not implemented in round 1.")
+from osivault.tokens.jwt import (
+    issue,
+    verify,
+    jwks_document,
+    rotate,
+    TokenError,
+)
 
-def verify(*args, **kwargs):
-    raise NotImplementedError("osivault.tokens.verify is not implemented in round 1.")
-
-def jwks_document(*args, **kwargs):
-    raise NotImplementedError("osivault.tokens.jwks_document is not implemented in round 1.")
-
-def rotate(*args, **kwargs):
-    raise NotImplementedError("osivault.tokens.rotate is not implemented in round 1.")
+__all__ = [
+    "issue",
+    "verify",
+    "jwks_document",
+    "rotate",
+    "TokenError",
+]
