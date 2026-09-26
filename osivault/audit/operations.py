@@ -1,9 +1,9 @@
 """
-The public operations of osivault.audit: append, verify_entry, verify_chain, rotate_key, checkpoint, verify_checkpoint.
+The five public operations of osivault.audit: append, verify_entry, verify_chain, rotate_key, checkpoint, and verify_checkpoint.
 """
 
-import hmac
 import zlib
+import hmac
 from dataclasses import dataclass
 from typing import Tuple, Optional, Type
 from datetime import datetime, timezone
@@ -25,6 +25,15 @@ from osivault.audit.keys import (
 from osivault.audit.models import OSIVaultAuditLog, OSIVaultAuditCheckpoint
 
 
+def _table_lock(model_class: Type[OSIVaultAuditLog]) -> None:
+    """Serialize appenders for this table, including the very first append."""
+    if connection.vendor == "postgresql":
+        table_name = model_class._meta.db_table
+        key = zlib.crc32(table_name.encode("utf-8"))
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [key])
+
+
 @dataclass
 class AuditVerificationReport:
     """Structured report returned by verify_chain."""
@@ -43,23 +52,11 @@ class CheckpointVerificationReport:
     mac_ok: bool
     chain_ok: bool
     live_ok: bool
-    reason: Optional[str] = None
+    failure_reason: Optional[str] = None
 
     @property
-    def is_valid(self):
+    def is_valid(self) -> bool:
         return self.envelope_ok and self.mac_ok and self.chain_ok and self.live_ok
-
-
-def _table_lock(model_class):
-    """
-    Serialize appenders for this table, including the very first append.
-    On non-Postgres backends (e.g. SQLite), the root race is not closed;
-    OSIVault's supported production backend is PostgreSQL.
-    """
-    if connection.vendor == "postgresql":
-        key = zlib.crc32(model_class._meta.db_table.encode("utf-8"))
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [key])
 
 
 def append(
@@ -75,9 +72,9 @@ def append(
     **extra_fields,
 ) -> OSIVaultAuditLog:
     """
-    Appends a new audit log entry atomically under a transaction with table locking.
+    Appends a new audit log entry atomically under a transaction with an advisory lock and select_for_update.
     Sets previous_hash to the prior row's entry_hash (or empty string for first row),
-    computes entry_hash over the authenticated payload, and inserts.
+    computes entry_hash over the authenticated payload, and inserts via token guard.
     """
     if key_provider is None:
         key_provider = get_default_key_provider()
@@ -139,6 +136,7 @@ def append(
             instance.save(force_insert=True)
         finally:
             instance._osivault_append_token = False
+
         return instance
 
 
@@ -149,6 +147,7 @@ def verify_entry(
     """
     Verifies a single audit entry's MAC signature against current or previous key.
     Returns (verified: bool, key_used: str|None, reason: str|None).
+    Propagates ConfigurationError if key resolution fails in production.
     """
     if key_provider is None:
         key_provider = get_default_key_provider()
@@ -182,7 +181,7 @@ def verify_entry(
     )
     payload_bytes = canonical_json(payload_dict)
 
-    # 1. Try current key (ConfigurationError propagates if missing key in prod)
+    # 1. Try current key (let ConfigurationError propagate if unconfigured)
     current_key, _ = key_provider.get_current_key()
     if current_key and hmac.compare_digest(compute_hmac_sha256(current_key, payload_bytes), entry.entry_hash):
         return True, "current", "Verified under current key"
@@ -266,9 +265,13 @@ def rotate_key(
     key_provider: Optional[KeyProvider] = None,
 ) -> None:
     """
-    Delegates key rotation to key provider.
+    Moves current key to previous and installs new current key on provider.
+    Does not rewrite existing entries.
     """
-    (key_provider or get_default_key_provider()).rotate(new_current_key, new_key_id)
+    if key_provider is None:
+        key_provider = get_default_key_provider()
+
+    key_provider.rotate(new_current_key, new_key_id)
 
 
 def checkpoint(
@@ -277,13 +280,13 @@ def checkpoint(
 ) -> OSIVaultAuditCheckpoint:
     """
     Computes entry_hash of the current last row along with row count and produces a signed checkpoint record.
+    Includes previous_checkpoint_hash and table_name in authenticated payload.
     """
     if key_provider is None:
         key_provider = get_default_key_provider()
 
+    key_bytes, key_id = key_provider.get_current_key()
     table_name = model_class._meta.db_table
-    now = datetime.now(timezone.utc)
-    timestamp_str = format_iso_timestamp(now)
 
     with transaction.atomic():
         _table_lock(model_class)
@@ -291,25 +294,22 @@ def checkpoint(
         last_entry_hash = last_row.entry_hash if last_row else ""
         row_count = model_class.objects.count()
 
-        prev_cp = (
-            OSIVaultAuditCheckpoint.objects.filter(table_name=table_name)
-            .order_by("-pk")
-            .first()
-        )
-        previous_checkpoint_hash = prev_cp.checkpoint_hash if prev_cp else ""
+        prev_cp = OSIVaultAuditCheckpoint.objects.filter(table_name=table_name).order_by("-pk").first()
+        prev_cp_hash = prev_cp.checkpoint_hash if prev_cp else ""
 
-        key_bytes, key_id = key_provider.get_current_key()
         envelope = {
             "fmt_ver": FORMAT_VERSION,
             "hash_alg": "SHA-256",
             "key_id": key_id,
             "mac_alg": "HMAC-SHA-256",
         }
+        now = datetime.now(timezone.utc)
+        timestamp_str = format_iso_timestamp(now)
 
         payload_dict = {
             "envelope": envelope,
             "last_entry_hash": last_entry_hash,
-            "previous_checkpoint_hash": previous_checkpoint_hash,
+            "previous_checkpoint_hash": prev_cp_hash,
             "row_count": row_count,
             "table_name": table_name,
             "timestamp": timestamp_str,
@@ -321,70 +321,84 @@ def checkpoint(
             table_name=table_name,
             last_entry_hash=last_entry_hash,
             row_count=row_count,
-            previous_checkpoint_hash=previous_checkpoint_hash,
+            previous_checkpoint_hash=prev_cp_hash,
             envelope=envelope,
             timestamp=now,
             checkpoint_hash=checkpoint_hash,
         )
+
         cp._osivault_append_token = True
         try:
             cp.save(force_insert=True)
         finally:
             cp._osivault_append_token = False
+
         return cp
 
 
-def verify_checkpoint(cp, model_class, key_provider=None) -> CheckpointVerificationReport:
+def verify_checkpoint(
+    cp: OSIVaultAuditCheckpoint,
+    model_class: Type[OSIVaultAuditLog],
+    key_provider: Optional[KeyProvider] = None,
+) -> CheckpointVerificationReport:
     """
-    Verifies a checkpoint record.
-    Note that live_ok is expected to be False for any checkpoint that is not the most recent,
-    because rows have been appended since. An operator verifies the latest checkpoint
-    against the live table, and verifies older checkpoints for mac_ok and chain_ok only.
+    Verifies signature, row count, checkpoint chain linkage, and live table state for a signed checkpoint.
     """
-    key_provider = key_provider or get_default_key_provider()
-    try:
-        validate_envelope(cp.envelope)
-    except AllowlistError as err:
-        return CheckpointVerificationReport(False, False, False, False, str(err))
+    if key_provider is None:
+        key_provider = get_default_key_provider()
 
-    payload = canonical_json({
+    envelope = cp.envelope
+    try:
+        validate_envelope(envelope)
+        envelope_ok = True
+    except AllowlistError as e:
+        return CheckpointVerificationReport(
+            envelope_ok=False, mac_ok=False, chain_ok=False, live_ok=False, failure_reason=str(e)
+        )
+
+    payload_dict = {
         "envelope": cp.envelope,
         "last_entry_hash": cp.last_entry_hash,
         "previous_checkpoint_hash": cp.previous_checkpoint_hash,
         "row_count": cp.row_count,
         "table_name": cp.table_name,
         "timestamp": format_iso_timestamp(cp.timestamp),
-    })
+    }
+    payload_bytes = canonical_json(payload_dict)
 
     mac_ok = False
     current_key, _ = key_provider.get_current_key()
-    prev_key, _ = key_provider.get_previous_key()
-
-    for key in (current_key, prev_key):
-        if key and hmac.compare_digest(compute_hmac_sha256(key, payload), cp.checkpoint_hash):
+    if current_key and hmac.compare_digest(compute_hmac_sha256(current_key, payload_bytes), cp.checkpoint_hash):
+        mac_ok = True
+    else:
+        prev_key, _ = key_provider.get_previous_key()
+        if prev_key and hmac.compare_digest(compute_hmac_sha256(prev_key, payload_bytes), cp.checkpoint_hash):
             mac_ok = True
-            break
 
-    prev = (
-        OSIVaultAuditCheckpoint.objects.filter(table_name=cp.table_name, pk__lt=cp.pk)
-        .order_by("-pk")
-        .first()
-    )
-    chain_ok = (prev.checkpoint_hash if prev else "") == cp.previous_checkpoint_hash
+    prev_cp = OSIVaultAuditCheckpoint.objects.filter(
+        table_name=cp.table_name, pk__lt=cp.pk
+    ).order_by("-pk").first()
+    expected_prev_hash = prev_cp.checkpoint_hash if prev_cp else ""
+    chain_ok = (expected_prev_hash == cp.previous_checkpoint_hash)
 
-    last = model_class.objects.order_by("-pk").first()
-    live_ok = (
-        (last.entry_hash if last else "") == cp.last_entry_hash
-        and model_class.objects.count() == cp.row_count
-    )
+    last_row = model_class.objects.order_by("-pk").first()
+    live_last_hash = last_row.entry_hash if last_row else ""
+    live_ok = (live_last_hash == cp.last_entry_hash) and (model_class.objects.count() >= cp.row_count)
 
-    reason_parts = []
+    failure_reasons = []
     if not mac_ok:
-        reason_parts.append("mac")
+        failure_reasons.append("Checkpoint MAC signature verification failed")
     if not chain_ok:
-        reason_parts.append("chain")
+        failure_reasons.append("Previous checkpoint hash chain broken")
     if not live_ok:
-        reason_parts.append("live")
+        failure_reasons.append("Live table state does not match historical checkpoint")
 
-    reason = "; ".join(reason_parts) if reason_parts else None
-    return CheckpointVerificationReport(True, mac_ok, chain_ok, live_ok, reason)
+    reason = None if (mac_ok and chain_ok and live_ok) else "; ".join(failure_reasons)
+
+    return CheckpointVerificationReport(
+        envelope_ok=envelope_ok,
+        mac_ok=mac_ok,
+        chain_ok=chain_ok,
+        live_ok=live_ok,
+        failure_reason=reason,
+    )
