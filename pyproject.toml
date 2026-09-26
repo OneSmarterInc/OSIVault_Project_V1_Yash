@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "osivault"
-version = "0.1.0"
+version = "0.2.0"
 description = "One Smarter's shared security core: encryption at rest, tamper-evident audit logs, crypto signing, tokens, and MFA adapters."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "Proprietary" }
+license = "MIT"
 authors = [
-    { name = "One Smarter Inc. Engineering", email = "engineering@onesmarter.com" }
+    { name = "One Smarter Inc. Engineering", email = "security@onesmarter.com" }
 ]
 keywords = [
     "django",
@@ -38,7 +38,8 @@ classifiers = [
 ]
 dependencies = [
     "django>=4.2",
-    "cryptography>=42.0.0"
+    "cryptography>=42.0.0",
+    "webauthn>=2.1.0"
 ]
 
 [project.optional-dependencies]
@@ -46,21 +47,22 @@ dev = [
     "pytest>=8.0.0",
     "pytest-django>=4.8.0",
     "pytest-cov>=4.1.0",
-    "psycopg[binary]"
+    "psycopg2-binary>=2.9.0",
+    "build>=1.0.0",
+    "twine>=5.0.0"
 ]
 
-
 [project.urls]
-Homepage = "https://pypi.org/project/osivault/"
-Documentation = "https://pypi.org/project/osivault/#description"
-Repository = "https://pypi.org/project/osivault/#files"
-Issues = "https://pypi.org/project/osivault/"
+Homepage = "https://github.com/OneSmarterInc/OSIVault"
+Documentation = "https://github.com/OneSmarterInc/OSIVault#readme"
+Repository = "https://github.com/OneSmarterInc/OSIVault.git"
+Issues = "https://github.com/OneSmarterInc/OSIVault/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["osivault*"]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "tests.settings"
+django_settings_module = "tests.settings"
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
