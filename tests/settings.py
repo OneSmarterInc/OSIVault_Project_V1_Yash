@@ -3,7 +3,6 @@ Django test settings for OSIVault test suite.
 """
 
 import os
-import urllib.parse
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,15 +26,16 @@ MIDDLEWARE = []
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL:
+    import urllib.parse
     url = urllib.parse.urlparse(DATABASE_URL)
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": url.path[1:],
-            "USER": url.username or "postgres",
-            "PASSWORD": url.password or "",
-            "HOST": url.hostname or os.environ.get("PGHOST", "localhost"),
-            "PORT": url.port or int(os.environ.get("PGPORT", "5432")),
+            "USER": url.username,
+            "PASSWORD": url.password,
+            "HOST": url.hostname,
+            "PORT": url.port or 5432,
         }
     }
 else:
